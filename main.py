@@ -1,329 +1,81 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#6c5ce7">
-<title>Voice Check Parkinson's Screening</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --violet:#6c5ce7; --violet-2:#8e7cff; --teal:#19b5a5; --coral:#ff7a6b; --sun:#ffc15e;
-    --ink:#2b2d42; --muted:#7a7f9a; --line:#e6e8f5; --card:#ffffffcc;
-    --ok:#12a594; --warn:#f0645a;
-  }
-  * { box-sizing:border-box; }
-  html { scroll-behavior:smooth; }
-  body {
-    margin:0; color:var(--ink);
-    font-family:"Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    background:
-      radial-gradient(900px 500px at 8% -10%, #e4defe 0%, transparent 60%),
-      radial-gradient(800px 500px at 100% 0%, #d6f5ef 0%, transparent 55%),
-      radial-gradient(700px 500px at 50% 110%, #ffe9e3 0%, transparent 60%),
-      #f7f6ff;
-    background-attachment: fixed;
-    min-height:100vh;
-  }
-  main { max-width:820px; margin:0 auto; padding:22px 16px 56px; }
+from pathlib import Path
 
-  /* ---------- hero ---------- */
-  .hero { text-align:center; padding:18px 8px 6px; }
-  .wave { display:flex; justify-content:center; align-items:center; gap:5px; height:54px; margin-bottom:8px; }
-  .wave span {
-    width:7px; border-radius:6px; height:14px;
-    background:linear-gradient(180deg, var(--violet-2), var(--teal));
-    animation:bounce 1.2s ease-in-out infinite;
-  }
-  .wave span:nth-child(1){animation-delay:-1.1s} .wave span:nth-child(2){animation-delay:-1.0s}
-  .wave span:nth-child(3){animation-delay:-.9s}  .wave span:nth-child(4){animation-delay:-.8s}
-  .wave span:nth-child(5){animation-delay:-.7s}  .wave span:nth-child(6){animation-delay:-.6s}
-  .wave span:nth-child(7){animation-delay:-.5s}  .wave span:nth-child(8){animation-delay:-.4s}
-  .wave span:nth-child(9){animation-delay:-.3s}
-  @keyframes bounce { 0%,100%{height:12px;opacity:.55} 50%{height:50px;opacity:1} }
-  h1 { font-size:clamp(1.7rem, 5vw, 2.3rem); font-weight:800; margin:4px 0 6px; letter-spacing:-.5px;
-       background:linear-gradient(90deg, var(--violet), var(--teal)); -webkit-background-clip:text; background-clip:text; color:transparent; }
-  .sub { color:var(--muted); margin:0 auto 16px; max-width:520px; font-weight:600; line-height:1.5; }
+import joblib
+import numpy as np
+import pandas as pd
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-  .toolbar { display:flex; flex-wrap:wrap; justify-content:center; gap:10px; margin:0 0 18px; }
-  .chip {
-    font:inherit; font-weight:700; font-size:.9rem; cursor:pointer;
-    border:1.5px solid var(--line); background:#fff; color:var(--violet);
-    padding:9px 16px; border-radius:999px; transition:transform .15s, box-shadow .15s, border-color .15s;
-  }
-  .chip:hover { transform:translateY(-2px); box-shadow:0 8px 18px #6c5ce722; border-color:var(--violet-2); }
-  .chip:active { transform:translateY(0) scale(.97); }
+BASE = Path(__file__).parent
+MODEL_PATH = BASE / "parkinsons_model.pkl"
 
-  /* ---------- sections ---------- */
-  .sec {
-    background:var(--card); backdrop-filter:blur(8px);
-    border:1px solid #fff; border-radius:22px; padding:18px 16px 16px; margin-bottom:16px;
-    box-shadow:0 10px 30px #6c5ce714;
-    animation:rise .6s ease both;
-  }
-  .sec:nth-child(2){animation-delay:.05s} .sec:nth-child(3){animation-delay:.1s}
-  .sec:nth-child(4){animation-delay:.15s} .sec:nth-child(5){animation-delay:.2s}
-  @keyframes rise { from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none} }
-  .sec-head { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
-  .badge { width:40px; height:40px; border-radius:13px; display:grid; place-items:center; font-size:1.2rem; flex:none; }
-  .sec h2 { font-size:1.05rem; margin:0; font-weight:800; }
-  .sec p { margin:2px 0 0; font-size:.82rem; color:var(--muted); font-weight:600; }
-  .fields { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px; }
-  .field label { display:block; font-size:.78rem; font-weight:700; color:var(--muted); margin:0 0 5px 4px; }
-  .field input {
-    width:100%; font:inherit; font-size:16px; font-weight:600; color:var(--ink);
-    padding:12px 14px; background:#fff; border:2px solid var(--line); border-radius:14px;
-    transition:border-color .15s, box-shadow .15s, transform .15s;
-  }
-  .field input::placeholder { color:#b6b9cf; font-weight:600; }
-  .field input:focus { outline:none; border-color:var(--violet-2); box-shadow:0 0 0 4px #8e7cff2b; transform:translateY(-1px); }
-  .field input:not(:placeholder-shown):valid { border-color:#b9ead9; }
+THRESHOLD = 0.5
 
-  /* ---------- actions ---------- */
-  .actions { display:flex; gap:12px; margin-top:6px; }
-  .btn {
-    font:inherit; font-weight:800; font-size:1.05rem; border:0; cursor:pointer; border-radius:16px; padding:15px;
-    transition:transform .15s, box-shadow .15s, opacity .15s;
-  }
-  #go { flex:1; color:#fff; background:linear-gradient(135deg, var(--violet), var(--violet-2) 55%, var(--teal));
-        box-shadow:0 12px 26px #6c5ce740; }
-  #go:hover { transform:translateY(-2px); box-shadow:0 16px 30px #6c5ce755; }
-  #go:active { transform:scale(.98); }
-  #go:disabled { opacity:.7; cursor:wait; }
-  #clear { flex:0 0 110px; background:#fff; color:var(--muted); border:2px solid var(--line); }
-  #clear:hover { transform:translateY(-2px); }
+FEATURES = [
+    {"name": "MDVP:Fo(Hz)", "hint": 148.79},
+    {"name": "MDVP:Fhi(Hz)", "hint": 175.829},
+    {"name": "MDVP:Flo(Hz)", "hint": 104.315},
+    {"name": "MDVP:Jitter(%)", "hint": 0.00494},
+    {"name": "MDVP:Jitter(Abs)", "hint": 0.00003},
+    {"name": "MDVP:RAP", "hint": 0.0025},
+    {"name": "MDVP:PPQ", "hint": 0.00269},
+    {"name": "MDVP:Shimmer", "hint": 0.02297},
+    {"name": "MDVP:Shimmer(dB)", "hint": 0.221},
+    {"name": "Shimmer:APQ3", "hint": None},
+    {"name": "Shimmer:APQ5", "hint": None},
+    {"name": "MDVP:APQ", "hint": None},
+    {"name": "NHR", "hint": 0.01166},
+    {"name": "HNR", "hint": 22.085},
+    {"name": "RPDE", "hint": 0.495954},
+    {"name": "DFA", "hint": 0.722254},
+    {"name": "spread1", "hint": -5.720868},
+    {"name": "spread2", "hint": 0.218885},
+    {"name": "D2", "hint": 2.361532},
+    {"name": "PPE", "hint": 0.194052},
+]
+NAMES = [f["name"] for f in FEATURES]
 
-  /* ---------- error + result ---------- */
-  #error { display:none; margin-top:16px; background:#fff1ef; color:#a3362c; border:1.5px solid #ffd3cd;
-           border-radius:16px; padding:13px 16px; font-weight:700; }
-  #result { display:none; margin-top:18px; text-align:center; padding:26px 18px 22px; border-radius:26px; color:#fff;
-            box-shadow:0 18px 40px #00000018; animation:pop .5s cubic-bezier(.2,1.2,.4,1) both; }
-  #result.good { background:linear-gradient(145deg, #12a594, #54d1b9); }
-  #result.alert { background:linear-gradient(145deg, #f0645a, #ff9d6b); }
-  @keyframes pop { from{opacity:0; transform:scale(.92) translateY(10px)} to{opacity:1; transform:none} }
-  .gauge { width:170px; height:170px; margin:0 auto 6px; position:relative; }
-  .gauge svg { width:100%; height:100%; transform:rotate(-90deg); }
-  .gauge .track { stroke:#ffffff40; }
-  .gauge .arc { stroke:#fff; stroke-linecap:round; transition:stroke-dashoffset 1.2s cubic-bezier(.2,.8,.2,1); }
-  .gauge .num { position:absolute; inset:0; display:grid; place-items:center; font-size:2.3rem; font-weight:800; }
-  .res-title { font-size:1.25rem; font-weight:800; margin:6px 0 4px; }
-  .res-sub { opacity:.92; font-weight:600; font-size:.92rem; margin:0; }
+if not MODEL_PATH.exists():
+    raise RuntimeError("parkinsons_model.pkl not found next to main.py")
 
-  .note { margin:22px 6px 0; text-align:center; font-size:.8rem; color:var(--muted); font-weight:600; line-height:1.6; }
-  .note b { color:var(--violet); }
+model = joblib.load(MODEL_PATH)
 
-  @media (max-width:420px) { .fields { grid-template-columns:1fr 1fr; gap:10px; } #clear { flex-basis:90px; } }
-  @media (prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
-</style>
-</head>
-<body>
-<main>
-  <header class="hero">
-    <div class="wave" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-    <h1>Voice Check</h1>
-    <p class="sub">Enter the 20 voice measurements from one recording and get a gentle, instant estimate.</p>
-    <div class="toolbar">
-      <button type="button" class="chip" id="example">✨ Try an example</button>
-      <button type="button" class="chip" id="typical">📊 Fill typical values</button>
-    </div>
-  </header>
+app = FastAPI(title="Parkinson's voice-feature classifier")
 
-  <form id="form" novalidate>
-    <div id="sections"></div>
-    <div class="actions">
-      <button type="submit" class="btn" id="go">Check my voice</button>
-      <button type="button" class="btn" id="clear">Clear</button>
-    </div>
-  </form>
 
-  <div id="error" role="alert"></div>
+class Inp(BaseModel):
+    features: dict[str, float]
 
-  <section id="result" aria-live="polite">
-    <div class="gauge">
-      <svg viewBox="0 0 120 120">
-        <circle class="track" cx="60" cy="60" r="52" fill="none" stroke-width="11"/>
-        <circle class="arc" id="arc" cx="60" cy="60" r="52" fill="none" stroke-width="11"
-                stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
-      </svg>
-      <div class="num" id="resNum">0%</div>
-    </div>
-    <p class="res-title" id="resTitle"></p>
-    <p class="res-sub" id="resSub"></p>
-  </section>
 
-  <p class="note">
-    <b>Educational demo only</b>, not a medical diagnosis. A simple model trained on a small public dataset
-    (195 recordings, 32 people; cross-validated AUC about 0.84). Please don't use it for health decisions,
-    and talk to a doctor if you have concerns.
-  </p>
-</main>
+@app.get("/")
+def home():
+    return FileResponse(BASE / "static" / "index.html")
 
-<script>
-/* How the 20 fields are grouped (names must match the API's /features exactly). */
-const GROUPS = [
-  { title:"Pitch", sub:"Voice frequency in Hz", icon:"🎵", bg:"#ece8ff",
-    names:["MDVP:Fo(Hz)","MDVP:Fhi(Hz)","MDVP:Flo(Hz)"] },
-  { title:"Jitter", sub:"Tiny pitch variations", icon:"〰️", bg:"#dff7f2",
-    names:["MDVP:Jitter(%)","MDVP:Jitter(Abs)","MDVP:RAP","MDVP:PPQ"] },
-  { title:"Shimmer", sub:"Tiny loudness variations", icon:"🔊", bg:"#ffeee0",
-    names:["MDVP:Shimmer","MDVP:Shimmer(dB)","Shimmer:APQ3","Shimmer:APQ5","MDVP:APQ"] },
-  { title:"Noise", sub:"Noise vs. tone in the voice", icon:"🌫️", bg:"#e6f0ff",
-    names:["NHR","HNR"] },
-  { title:"Complexity", sub:"Nonlinear voice measures", icon:"🧬", bg:"#ffe6ee",
-    names:["RPDE","DFA","spread1","spread2","D2","PPE"] },
-];
 
-/* One recording from the public Parkinson's voice dataset (first row), for trying the page out. */
-const EXAMPLE = {
-  "MDVP:Fo(Hz)":119.992,"MDVP:Fhi(Hz)":157.302,"MDVP:Flo(Hz)":74.997,"MDVP:Jitter(%)":0.00784,
-  "MDVP:Jitter(Abs)":0.00007,"MDVP:RAP":0.0037,"MDVP:PPQ":0.00554,"MDVP:Shimmer":0.04374,
-  "MDVP:Shimmer(dB)":0.426,"Shimmer:APQ3":0.02182,"Shimmer:APQ5":0.0313,"MDVP:APQ":0.02971,
-  "NHR":0.02211,"HNR":21.033,"RPDE":0.414783,"DFA":0.815285,"spread1":-4.813031,
-  "spread2":0.266482,"D2":2.301442,"PPE":0.284654
-};
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
-const $ = (id) => document.getElementById(id);
-const form = $("form"), errBox = $("error"), resBox = $("result");
-const CIRC = 2 * Math.PI * 52;
-let FEATURES = [];
-let inputs = {};
 
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
+@app.get("/features")
+def features():
+    return FEATURES
 
-async function init() {
-  try {
-    const r = await fetch("/features");
-    if (!r.ok) throw new Error();
-    FEATURES = await r.json();
-  } catch (e) {
-    showError("Could not load the form. The free server may be waking up, please refresh in a minute.");
-    return;
-  }
-  const byName = Object.fromEntries(FEATURES.map(f => [f.name, f]));
-  const placed = new Set();
-  const root = $("sections");
 
-  const build = (g) => {
-    const sec = el("section", "sec");
-    const head = el("div", "sec-head");
-    const badge = el("div", "badge", g.icon); badge.style.background = g.bg;
-    const txt = el("div");
-    txt.append(el("h2", "", g.title), el("p", "", g.sub));
-    head.append(badge, txt);
-    const grid = el("div", "fields");
-    g.names.forEach(n => {
-      const f = byName[n]; if (!f) return;
-      placed.add(n);
-      const wrap = el("div", "field");
-      const lab = el("label", "", n); lab.htmlFor = "f-" + n;
-      const inp = document.createElement("input");
-      inp.id = "f-" + n; inp.type = "number"; inp.step = "any"; inp.required = true; inp.inputMode = "decimal";
-      inp.placeholder = f.hint !== null && f.hint !== undefined ? "e.g. " + f.hint : "enter value";
-      inputs[n] = inp;
-      wrap.append(lab, inp); grid.append(wrap);
-    });
-    sec.append(head, grid);
-    root.append(sec);
-  };
+@app.post("/predict")
+def predict(d: Inp):
+    missing = [n for n in NAMES if n not in d.features]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Missing features: {missing}")
 
-  GROUPS.forEach(build);
-  // safety net: any feature the API has that isn't in a group still gets a field
-  const rest = FEATURES.filter(f => !placed.has(f.name)).map(f => f.name);
-  if (rest.length) build({ title:"Other", sub:"Additional measurements", icon:"➕", bg:"#eef0f6", names:rest });
-}
+    row = pd.DataFrame([[d.features[n] for n in NAMES]], columns=NAMES)
+    if not np.isfinite(row.to_numpy()).all():
+        raise HTTPException(status_code=422, detail="All values must be finite numbers")
 
-function showError(msg) {
-  errBox.textContent = msg; errBox.style.display = "block"; resBox.style.display = "none";
-}
-
-function fill(values) {
-  FEATURES.forEach(f => {
-    const v = values[f.name];
-    if (v !== undefined && v !== null && inputs[f.name]) inputs[f.name].value = v;
-  });
-  errBox.style.display = "none";
-}
-
-$("example").addEventListener("click", () => fill(EXAMPLE));
-$("typical").addEventListener("click", () => {
-  const med = {};
-  FEATURES.forEach(f => { if (f.hint !== null && f.hint !== undefined) med[f.name] = f.hint; });
-  fill(med);
-});
-
-form.addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  errBox.style.display = "none";
-
-  const features = {};
-  for (const f of FEATURES) {
-    const inp = inputs[f.name];
-    if (!inp || inp.value.trim() === "") {
-      showError("Please fill in all fields, or tap “Try an example”.");
-      if (inp) inp.focus();
-      return;
+    prob = float(model.predict_proba(row)[0, 1])
+    return {
+        "probability": prob,
+        "prediction": int(prob >= THRESHOLD),
+        "threshold": THRESHOLD,
     }
-    features[f.name] = Number(inp.value);
-  }
-
-  const btn = $("go");
-  btn.disabled = true; btn.textContent = "Listening…";
-  try {
-    const r = await fetch("/predict", {
-      method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ features }),
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      const d = data.detail;
-      showError(typeof d === "string" ? d : "Some values look invalid. Please check them.");
-      return;
-    }
-    showResult(data);
-  } catch (e) {
-    showError("Could not reach the server. The free server may be waking up, try again in a minute.");
-  } finally {
-    btn.disabled = false; btn.textContent = "Check my voice";
-  }
-});
-
-function showResult(data) {
-  const pct = Math.max(0, Math.min(100, data.probability * 100));
-  const positive = data.prediction === 1;
-  resBox.className = positive ? "alert" : "good";
-  resBox.style.display = "block";
-  $("resTitle").textContent = positive
-    ? "Pattern more similar to Parkinson's recordings"
-    : "Pattern more similar to healthy recordings";
-  $("resSub").textContent = "Estimated probability " + pct.toFixed(1) + "% · threshold " + data.threshold +
-    (positive ? " · consider speaking with a doctor" : " · this is not a diagnosis");
-
-  // animate the ring and the number
-  const arc = $("arc");
-  arc.style.transition = "none"; arc.style.strokeDashoffset = CIRC;
-  void arc.getBoundingClientRect();
-  arc.style.transition = ""; arc.style.strokeDashoffset = CIRC * (1 - pct / 100);
-  const num = $("resNum"), start = performance.now(), dur = 1100;
-  const tick = (t) => {
-    const k = Math.min(1, (t - start) / dur), e = 1 - Math.pow(1 - k, 3);
-    num.textContent = Math.round(pct * e) + "%";
-    if (k < 1) requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
-  resBox.scrollIntoView({ behavior:"smooth", block:"center" });
-}
-
-$("clear").addEventListener("click", () => {
-  form.reset(); errBox.style.display = "none"; resBox.style.display = "none";
-});
-
-init();
-</script>
-</body>
-</html>
