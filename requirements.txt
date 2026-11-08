@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pandas
+numpy
+joblib
+# IMPORTANT: pin this to the exact version you trained with, e.g. scikit-learn==1.5.2
+# (run: import sklearn; print(sklearn.__version__) in your Kaggle notebook)
+scikit-learn
