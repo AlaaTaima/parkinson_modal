@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parkinson's Voice Screening</title>
+<style>
+  :root { --navy:#1F3A5F; --bg:#f5f7fa; --card:#fff; --border:#d9dee5; --muted:#667085; --ok:#1e8e4e; --risk:#c0392b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:#1b2430; }
+  main { max-width:760px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { color:var(--navy); font-size:1.5rem; margin:8px 0 4px; }
+  .sub { color:var(--muted); margin:0 0 18px; font-size:.95rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:12px; }
+  label { display:block; font-size:.8rem; color:var(--muted); margin-bottom:4px; }
+  input { width:100%; padding:10px; font-size:16px; border:1px solid var(--border); border-radius:8px; }
+  input:focus { outline:2px solid var(--navy); border-color:transparent; }
+  .actions { display:flex; gap:10px; margin-top:16px; }
+  button { padding:12px; font-size:16px; border-radius:8px; border:0; cursor:pointer; }
+  #go { flex:1; background:var(--navy); color:#fff; }
+  #go:disabled { opacity:.6; cursor:wait; }
+  #clear { flex:0 0 100px; background:#e8ecf1; color:#1b2430; }
+  #result, #error { display:none; margin-top:16px; }
+  #error { background:#fdecea; color:#8a1f11; border-radius:8px; padding:12px; }
+  .label { font-size:1.15rem; font-weight:600; margin:0 0 4px; }
+  .pct { color:var(--muted); margin:0 0 10px; }
+  .bar { height:12px; background:#e8ecf1; border-radius:6px; overflow:hidden; }
+  .fill { height:100%; width:0; transition:width .4s; }
+  .note { font-size:.78rem; color:var(--muted); margin-top:18px; line-height:1.5; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Parkinson's Voice Screening</h1>
+  <p class="sub">Enter the 20 voice measurements from one recording.</p>
+
+  <form id="form" class="card">
+    <div id="grid" class="grid"></div>
+    <div class="actions">
+      <button type="submit" id="go">Predict</button>
+      <button type="button" id="clear">Clear</button>
+    </div>
+  </form>
+
+  <div id="error"></div>
+
+  <div id="result" class="card">
+    <p class="label" id="resLabel"></p>
+    <p class="pct" id="resPct"></p>
+    <div class="bar"><div class="fill" id="resFill"></div></div>
+  </div>
+
+  <p class="note">
+    Educational / research demo only, not a medical diagnosis. The model is a logistic regression
+    trained on a small public dataset (195 recordings from 32 people; cross-validated by person,
+    AUC about 0.84). Do not use it to make health decisions.
+  </p>
+</main>
+
+<script>
+let FEATURES = [];
+const grid = document.getElementById("grid");
+const form = document.getElementById("form");
+const errBox = document.getElementById("error");
+const resBox = document.getElementById("result");
+
+async function init() {
+  try {
+    const r = await fetch("/features");
+    FEATURES = await r.json();
+  } catch (e) {
+    showError("Could not load the form. Please refresh the page.");
+    return;
+  }
+  FEATURES.forEach((f, i) => {
+    const wrap = document.createElement("div");
+    const lab = document.createElement("label");
+    lab.htmlFor = "f" + i;
+    lab.textContent = f.name;
+    const inp = document.createElement("input");
+    inp.id = "f" + i;
+    inp.type = "number";
+    inp.step = "any";
+    inp.required = true;
+    inp.inputMode = "decimal";
+    if (f.hint !== null) inp.placeholder = "median " + f.hint;
+    wrap.append(lab, inp);
+    grid.append(wrap);
+  });
+}
+
+function showError(msg) {
+  errBox.textContent = msg;
+  errBox.style.display = "block";
+  resBox.style.display = "none";
+}
+
+form.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  errBox.style.display = "none";
+  const features = {};
+  FEATURES.forEach((f, i) => {
+    features[f.name] = Number(document.getElementById("f" + i).value);
+  });
+
+  const btn = document.getElementById("go");
+  btn.disabled = true;
+  btn.textContent = "Predicting...";
+  try {
+    const r = await fetch("/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ features }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      const d = data.detail;
+      showError(typeof d === "string" ? d : "Invalid input. Please check the values.");
+      return;
+    }
+    const pct = (data.probability * 100).toFixed(1);
+    const positive = data.prediction === 1;
+    const color = positive ? "var(--risk)" : "var(--ok)";
+    document.getElementById("resLabel").textContent = positive
+      ? "Pattern more consistent with Parkinson's"
+      : "Pattern more consistent with healthy";
+    document.getElementById("resLabel").style.color = color;
+    document.getElementById("resPct").textContent =
+      "Estimated probability: " + pct + "% (threshold " + data.threshold + ")";
+    const fill = document.getElementById("resFill");
+    fill.style.background = color;
+    fill.style.width = pct + "%";
+    resBox.style.display = "block";
+  } catch (e) {
+    showError("Could not reach the server. The free server may be waking up, try again in a minute.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Predict";
+  }
+});
+
+document.getElementById("clear").addEventListener("click", () => {
+  form.reset();
+  errBox.style.display = "none";
+  resBox.style.display = "none";
+});
+
+init();
+</script>
+</body>
+</html>
